@@ -1,0 +1,14 @@
+Package: dut
+Version: @VERSION@
+Architecture: all
+Maintainer: Mich-Seth Owusu <michsethowusu@gmail.com>
+Section: net
+Priority: optional
+Homepage: https://github.com/michsethowusu/dut
+Depends: python3 (>= 3.8), python3-gi, gir1.2-gtk-3.0, vnstat, libnotify-bin, gir1.2-ayatanaappindicator3-0.1 | gir1.2-appindicator3-0.1, nethogs
+Installed-Size: @SIZE@
+Description: Data Usage Tracker - watch your internet data against a cap
+ DUT is a small desktop app for people on limited internet plans. It sits in
+ the top bar showing today's usage against a daily cap, tracks a monthly plan
+ with any reset day, warns you at 80% and 100%, and shows which apps used the
+ most data (via a small NetHogs-based background service).

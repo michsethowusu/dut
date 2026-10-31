@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=DUT
+GenericName=Data Usage Tracker
+Comment=Track internet data used against a daily cap or monthly plan
+Exec=dut
+Icon=network-transmit-receive
+Terminal=false
+Categories=Network;Monitor;
+Keywords=internet;data;bandwidth;usage;cap;vnstat;
+StartupNotify=false

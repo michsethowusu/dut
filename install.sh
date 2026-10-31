@@ -41,7 +41,7 @@ Comment=Track internet data used against a daily cap or monthly plan
 Exec=$HOME/.local/bin/dut
 Icon=network-transmit-receive
 Terminal=false
-Categories=Network;Monitor;Utility;
+Categories=Network;Monitor;
 Keywords=internet;data;bandwidth;usage;cap;vnstat;
 DESKTOP
 sed -e "s|^Exec=.*|Exec=$HOME/.local/bin/dut --hidden|" \

@@ -1,0 +1,14 @@
+#!/bin/sh
+set -e
+if [ "$1" = "configure" ] && [ -d /run/systemd/system ]; then
+  systemctl daemon-reload || true
+  # vnStat counts total usage; dut-apps records per-app usage.
+  systemctl enable --now vnstat.service >/dev/null 2>&1 || true
+  if [ -z "$2" ]; then
+    systemctl enable --now dut-apps.service >/dev/null 2>&1 || true   # fresh install
+  else
+    systemctl try-restart dut-apps.service >/dev/null 2>&1 || true    # upgrade
+  fi
+fi
+command -v update-desktop-database >/dev/null && update-desktop-database -q /usr/share/applications || true
+exit 0

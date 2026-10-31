@@ -22,6 +22,8 @@ for _name in ("AyatanaAppIndicator3", "AppIndicator3"):
     except (ValueError, ImportError):
         pass
 
+__version__ = "1.0.0"
+
 CONFIG_DIR = os.path.expanduser("~/.config/dut")
 CONFIG_FILE = os.path.join(CONFIG_DIR, "config.json")
 DEFAULTS = {
@@ -378,8 +380,12 @@ class App(Gtk.ApplicationWindow):
             self.apps_grid.remove(child)
         totals, installed = read_app_usage(first_day, last_day)
         if not installed or not totals:
-            msg = ("Per-app tracking isn't set up.\nRun  sudo ./install-app-tracking.sh  from the repo."
-                   if not installed else "No app traffic recorded yet for this period.")
+            if installed:
+                msg = "No app traffic recorded yet for this period."
+            elif os.path.exists("/lib/systemd/system/dut-apps.service"):
+                msg = "Per-app tracking is off.\nTurn it on with:  sudo systemctl enable --now dut-apps"
+            else:
+                msg = "Per-app tracking isn't set up.\nRun  sudo ./install-app-tracking.sh  from the repo."
             lbl = Gtk.Label(label=msg, xalign=0, selectable=True)
             lbl.get_style_context().add_class("dim-label")
             self.apps_grid.attach(lbl, 0, 0, 3, 1)
@@ -479,5 +485,8 @@ class DutApp(Gtk.Application):
 
 
 if __name__ == "__main__":
+    if "--version" in sys.argv[1:]:
+        print(f"dut {__version__}")
+        sys.exit(0)
     hidden = "--hidden" in sys.argv[1:]
     sys.exit(DutApp(hidden).run([sys.argv[0]]))

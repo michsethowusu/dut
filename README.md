@@ -40,30 +40,47 @@ for details.
 
 ## Install
 
+### Ubuntu / Debian (recommended)
+
+1. Download **`dut_1.0.0_all.deb`** from the
+   [latest release](https://github.com/michsethowusu/dut/releases/latest).
+2. Install it, either by double-clicking it (opens Ubuntu Software), or in a terminal:
+
+   ```bash
+   sudo apt install ./dut_1.0.0_all.deb
+   ```
+
+3. Open **DUT** from your app menu. From then on it starts by itself at login, in the top bar.
+
+`apt` installs everything DUT needs (vnStat, NetHogs, GTK bindings) and starts the background
+services: vnStat for total usage and `dut-apps` for per-app usage.
+
+> vnStat only counts from the moment it's installed, so the first day shows only part of the
+> day's usage.
+
+To turn per-app tracking off: `sudo systemctl disable --now dut-apps`
+
+### From source (other distros, or for development)
+
 ```bash
 git clone https://github.com/michsethowusu/dut.git
 cd dut
-./install.sh
+./install.sh                      # installs for your user only
+sudo ./install-app-tracking.sh    # optional: per-app usage
 ```
 
-DUT starts in your top bar right away, appears in your app menu, and starts
-automatically every time you log in.
+`install.sh` uses `apt` for missing system packages; on other distros, install the packages in
+[requirements.txt](requirements.txt) yourself first. Don't mix the two methods: run
+`./uninstall.sh` before switching to the `.deb`.
 
-> vnStat only counts from the moment it's installed, so the first day will show only part of
-> the day's usage.
-
-### Per-app usage (optional)
-
-vnStat counts totals per connection, not per app. To see which apps use your data:
+### Build the .deb yourself
 
 ```bash
-sudo ./install-app-tracking.sh
+packaging/build-deb.sh          # → dist/dut_<version>_all.deb
 ```
 
-This installs [NetHogs](https://github.com/raboof/nethogs) and a small background service,
-`dut-apps`, that records each app's downloads and uploads per day. It runs as root because
-working out which program owns network traffic needs admin rights. Open the **Apps** tab in
-the window to see the results.
+Publishing a GitHub release also builds the `.deb` and attaches it automatically
+(see `.github/workflows/release.yml`).
 
 ## Using DUT
 
@@ -121,11 +138,11 @@ Settings are saved in `~/.config/dut/config.json`.
 ## Uninstall
 
 ```bash
-./uninstall.sh            # keeps your settings
-./uninstall.sh --purge    # also deletes settings and per-app history
+sudo apt remove dut       # .deb install (add --purge to also delete per-app history)
+./uninstall.sh            # source install (add --purge to also delete settings)
 ```
 
-vnStat itself is left installed.
+Your settings stay in `~/.config/dut` unless you delete them. vnStat is left installed.
 
 ## Project layout
 
@@ -136,6 +153,8 @@ vnStat itself is left installed.
 | `install.sh` / `uninstall.sh` | Install or remove for the current user |
 | `install-app-tracking.sh` | Install the optional per-app service |
 | `requirements.txt` | Python and system dependencies |
+| `packaging/` | `.deb` build script, package metadata, systemd service, desktop entry |
+| `CHANGELOG.md` | Release notes |
 
 ## License
 

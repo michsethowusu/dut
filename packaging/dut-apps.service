@@ -1,0 +1,12 @@
+[Unit]
+Description=DUT per-app traffic collector (NetHogs)
+After=network.target
+
+[Service]
+ExecStart=/usr/bin/python3 -I /usr/lib/dut/dut-collector
+Restart=always
+RestartSec=10
+Nice=10
+
+[Install]
+WantedBy=multi-user.target
