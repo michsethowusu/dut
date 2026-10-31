@@ -1,9 +1,9 @@
 # Changelog
 
-## Unreleased
+## v1.0.1 — 2026-10-31
 
-- DUT is now installed only via the `.deb`; removed `install.sh`, `install-app-tracking.sh` and `uninstall.sh`
-- Apps tab: clearer hint when per-app tracking is turned off
+- Apps tab: when per-app tracking is off, the hint now gives the `systemctl` command to turn it on (it used to point at a script that no longer exists)
+- Repo: the `.deb` is now the only install method; removed `install.sh`, `install-app-tracking.sh` and `uninstall.sh`
 
 ## v1.0.0 — 2026-10-31
 

@@ -22,7 +22,7 @@ for _name in ("AyatanaAppIndicator3", "AppIndicator3"):
     except (ValueError, ImportError):
         pass
 
-__version__ = "1.0.0"
+__version__ = "1.0.1"
 
 CONFIG_DIR = os.path.expanduser("~/.config/dut")  # per-user settings
 CONFIG_FILE = os.path.join(CONFIG_DIR, "config.json")

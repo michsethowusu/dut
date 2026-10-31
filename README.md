@@ -38,12 +38,12 @@ shows how much you've used today against your own cap, warns you before you run 
 
 ### Ubuntu / Debian (recommended)
 
-1. Download **`dut_1.0.0_all.deb`** from the
+1. Download **`dut_<version>_all.deb`** from the
    [latest release](https://github.com/michsethowusu/dut/releases/latest).
 2. Install it, either by double-clicking it (opens Ubuntu Software), or in a terminal:
 
    ```bash
-   sudo apt install ./dut_1.0.0_all.deb
+   sudo apt install ./dut_*_all.deb
    ```
 
 3. Open **DUT** from your app menu. From then on it starts by itself at login, in the top bar.
