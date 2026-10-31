@@ -1,7 +1,5 @@
 # DUT — Data Usage Tracker
 
-**Know where your data goes before your bundle runs out.**
-
 DUT (**D**ata **U**sage **T**racker) is a small Linux desktop app for people on limited internet plans: mobile data
 bundles, capped home broadband, or tethering from your phone. It sits in your top bar,
 shows how much you've used today against your own cap, warns you before you run out, and
