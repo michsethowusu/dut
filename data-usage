@@ -1,0 +1,333 @@
+#!/usr/bin/env python3
+"""Data Usage — a small GTK window over vnStat for tracking a limited internet plan."""
+import calendar
+import datetime as dt
+import json
+import os
+import re
+import subprocess
+
+import gi
+
+gi.require_version("Gtk", "3.0")
+from gi.repository import GLib, Gtk  # noqa: E402
+
+CONFIG_DIR = os.path.expanduser("~/.config/data-usage")
+CONFIG_FILE = os.path.join(CONFIG_DIR, "config.json")
+DEFAULTS = {
+    "plan_gb": 0.0,        # monthly plan, 0 = no limit
+    "daily_cap_gb": 0.0,   # daily cap, 0 = no limit
+    "cycle_start_day": 1,  # day of month the plan resets
+    "warn_percent": 80,
+    "notified": {},        # cycle-start -> highest threshold already notified
+}
+# Real network devices only: Wi-Fi, Ethernet, mobile modem, phone USB tethering.
+PHYSICAL = re.compile(r"^(wl|en|eth|ww|usb)")
+
+
+def load_config():
+    cfg = dict(DEFAULTS)
+    try:
+        with open(CONFIG_FILE) as f:
+            cfg.update(json.load(f))
+    except (OSError, ValueError):
+        pass
+    return cfg
+
+
+def save_config(cfg):
+    os.makedirs(CONFIG_DIR, exist_ok=True)
+    with open(CONFIG_FILE, "w") as f:
+        json.dump(cfg, f, indent=2)
+
+
+def human(n):
+    for unit in ("B", "KB", "MB", "GB", "TB"):
+        if abs(n) < 1000 or unit == "TB":
+            return f"{n:.0f} {unit}" if unit in ("B", "KB") else f"{n:.2f} {unit}"
+        n /= 1000.0
+
+
+def clamp_day(year, month, day):
+    return dt.date(year, month, min(day, calendar.monthrange(year, month)[1]))
+
+
+def cycle_bounds(today, start_day):
+    """Return (start, next_reset) dates of the billing cycle containing today."""
+    this_start = clamp_day(today.year, today.month, start_day)
+    if today >= this_start:
+        start = this_start
+    else:
+        y, m = (today.year - 1, 12) if today.month == 1 else (today.year, today.month - 1)
+        start = clamp_day(y, m, start_day)
+    y, m = (start.year + 1, 1) if start.month == 12 else (start.year, start.month + 1)
+    return start, clamp_day(y, m, start_day)
+
+
+def physical_ifaces():
+    return sorted(i for i in os.listdir("/sys/class/net") if PHYSICAL.match(i))
+
+
+def read_vnstat_days():
+    """Return {date: [rx, tx]} summed over physical interfaces, plus an error string."""
+    try:
+        out = subprocess.run(["vnstat", "--json", "d"], capture_output=True,
+                             text=True, timeout=10, check=True).stdout
+        data = json.loads(out)
+    except Exception as e:  # noqa: BLE001
+        return {}, f"Could not read vnStat: {e}"
+    days = {}
+    for iface in data.get("interfaces", []):
+        if not PHYSICAL.match(iface["name"]):
+            continue
+        for d in iface["traffic"].get("day", []):
+            key = dt.date(d["date"]["year"], d["date"]["month"], d["date"]["day"])
+            acc = days.setdefault(key, [0, 0])
+            acc[0] += d["rx"]
+            acc[1] += d["tx"]
+    return days, ""
+
+
+def read_counters():
+    rx = tx = 0
+    for i in physical_ifaces():
+        try:
+            with open(f"/sys/class/net/{i}/statistics/rx_bytes") as f:
+                rx += int(f.read())
+            with open(f"/sys/class/net/{i}/statistics/tx_bytes") as f:
+                tx += int(f.read())
+        except OSError:
+            pass
+    return rx, tx
+
+
+class App(Gtk.Window):
+    def __init__(self):
+        super().__init__(title="Data Usage")
+        self.set_default_size(420, 520)
+        self.set_border_width(16)
+        self.set_icon_name("network-transmit-receive")
+        self.cfg = load_config()
+        self.last_counters = read_counters()
+
+        header = Gtk.HeaderBar(title="Data Usage", show_close_button=True)
+        settings_btn = Gtk.Button.new_from_icon_name("emblem-system-symbolic", Gtk.IconSize.BUTTON)
+        settings_btn.set_tooltip_text("Plan settings")
+        settings_btn.connect("clicked", self.open_settings)
+        header.pack_end(settings_btn)
+        refresh_btn = Gtk.Button.new_from_icon_name("view-refresh-symbolic", Gtk.IconSize.BUTTON)
+        refresh_btn.set_tooltip_text("Refresh now")
+        refresh_btn.connect("clicked", lambda *_: self.refresh())
+        header.pack_end(refresh_btn)
+        self.set_titlebar(header)
+
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
+        self.add(box)
+
+        self.cycle_lbl = self._label(box, "", css="dim-label")
+        self.used_lbl = self._label(box, "", markup=True)
+        self.bar = Gtk.LevelBar(min_value=0, max_value=1)
+        self.bar.add_offset_value("low", 0.8)
+        self.bar.add_offset_value("high", 0.95)
+        self.bar.add_offset_value("full", 1.0)
+        self.bar.set_size_request(-1, 14)
+        box.pack_start(self.bar, False, False, 0)
+        self.remain_lbl = self._label(box, "", markup=True)
+
+        box.pack_start(Gtk.Separator(), False, False, 4)
+        self.day_lbl = self._label(box, "", markup=True)
+        self.day_bar = Gtk.LevelBar(min_value=0, max_value=1)
+        self.day_bar.add_offset_value("low", 0.8)
+        self.day_bar.add_offset_value("high", 0.95)
+        self.day_bar.add_offset_value("full", 1.0)
+        self.day_bar.set_size_request(-1, 14)
+        box.pack_start(self.day_bar, False, False, 0)
+
+        box.pack_start(Gtk.Separator(), False, False, 4)
+        grid = Gtk.Grid(column_spacing=16, row_spacing=6)
+        box.pack_start(grid, False, False, 0)
+        self.stats = {}
+        for row, key in enumerate(["Today", "Daily average", "Projected this cycle",
+                                   "Safe daily budget", "Live speed"]):
+            k = Gtk.Label(label=key, xalign=0)
+            k.get_style_context().add_class("dim-label")
+            v = Gtk.Label(xalign=1, hexpand=True, selectable=True)
+            grid.attach(k, 0, row, 1, 1)
+            grid.attach(v, 1, row, 1, 1)
+            self.stats[key] = v
+
+        box.pack_start(Gtk.Separator(), False, False, 4)
+        self._label(box, "<b>Last 7 days</b>", markup=True)
+        self.days_grid = Gtk.Grid(column_spacing=12, row_spacing=4)
+        box.pack_start(self.days_grid, False, False, 0)
+
+        self.foot_lbl = Gtk.Label(xalign=0)
+        self.foot_lbl.get_style_context().add_class("dim-label")
+        self.foot_lbl.set_line_wrap(True)
+        box.pack_end(self.foot_lbl, False, False, 0)
+
+        self.refresh()
+        GLib.timeout_add_seconds(60, self._tick_refresh)
+        GLib.timeout_add_seconds(2, self._tick_speed)
+
+    def _label(self, box, text, markup=False, css=None):
+        lbl = Gtk.Label(xalign=0)
+        lbl.set_markup(text) if markup else lbl.set_text(text)
+        if css:
+            lbl.get_style_context().add_class(css)
+        box.pack_start(lbl, False, False, 0)
+        return lbl
+
+    def _tick_refresh(self):
+        self.refresh()
+        return True
+
+    def _tick_speed(self):
+        rx, tx = read_counters()
+        drx = max(0, rx - self.last_counters[0]) / 2
+        dtx = max(0, tx - self.last_counters[1]) / 2
+        self.last_counters = (rx, tx)
+        self.stats["Live speed"].set_text(f"↓ {human(drx)}/s   ↑ {human(dtx)}/s")
+        return True
+
+    def refresh(self):
+        days, err = read_vnstat_days()
+        today = dt.date.today()
+        start, reset = cycle_bounds(today, int(self.cfg["cycle_start_day"]))
+        cycle_days = [d for d in days if start <= d <= today]
+        used = sum(sum(days[d]) for d in cycle_days)
+        first = min(days) if days else today
+        elapsed = (today - max(start, first)).days + 1  # only days vnStat actually recorded
+        total_len = (reset - start).days
+        left_days = (reset - today).days
+        plan = float(self.cfg["plan_gb"]) * 1e9
+
+        self.cycle_lbl.set_text(
+            f"Cycle {start:%d %b} – {reset - dt.timedelta(days=1):%d %b}  ·  resets in {left_days} day(s)")
+        avg = used / elapsed
+        projected = avg * total_len
+        t = days.get(today, [0, 0])
+        self.stats["Today"].set_text(f"{human(sum(t))}  (↓ {human(t[0])} ↑ {human(t[1])})")
+        self.stats["Daily average"].set_text(human(avg))
+
+        if plan > 0:
+            frac = used / plan
+            self.bar.set_value(min(frac, 1.0))
+            self.bar.show()
+            colour = "#c01c28" if frac >= 0.95 else "#e5a50a" if frac >= self.cfg["warn_percent"] / 100 else "#26a269"
+            self.used_lbl.set_markup(
+                f"<span size='xx-large' weight='bold' foreground='{colour}'>{human(used)}</span>"
+                f"<span size='large'>  of {human(plan)}  ({frac * 100:.1f}%)</span>")
+            remaining = plan - used
+            if remaining >= 0:
+                self.remain_lbl.set_markup(f"<b>{human(remaining)}</b> left")
+            else:
+                self.remain_lbl.set_markup(f"<span foreground='#c01c28'><b>Over by {human(-remaining)}</b></span>")
+            over = projected > plan
+            self.stats["Projected this cycle"].set_markup(
+                f"<span foreground='#c01c28'>{human(projected)} ⚠</span>" if over else human(projected))
+            budget = max(0, remaining + sum(t)) / max(1, left_days)  # remaining incl. today, spread over days left
+            self.stats["Safe daily budget"].set_text(human(budget))
+            self._maybe_notify(start.isoformat(), frac, used, plan, "Monthly")
+        else:
+            self.bar.hide()
+            self.used_lbl.set_markup(f"<span size='xx-large' weight='bold'>{human(used)}</span>"
+                                     "<span size='large'>  used (no limit set)</span>")
+            self.remain_lbl.set_text("Set your plan size with the ⚙ button.")
+            self.stats["Projected this cycle"].set_text(human(projected))
+            self.stats["Safe daily budget"].set_text("—")
+
+        cap = float(self.cfg.get("daily_cap_gb", 0)) * 1e9
+        today_used = sum(t)
+        if cap > 0:
+            dfrac = today_used / cap
+            self.day_bar.set_value(min(dfrac, 1.0))
+            self.day_bar.show()
+            colour = "#c01c28" if dfrac >= 0.95 else "#e5a50a" if dfrac >= self.cfg["warn_percent"] / 100 else "#26a269"
+            left = cap - today_used
+            tail = f"{human(left)} left today" if left >= 0 else f"over by {human(-left)}"
+            self.day_lbl.set_markup(
+                f"<b>Today:</b> <span foreground='{colour}' weight='bold'>{human(today_used)}</span>"
+                f" of {human(cap)} daily cap ({dfrac * 100:.0f}%) · {tail}")
+            self._maybe_notify("day:" + today.isoformat(), dfrac, today_used, cap, "Daily")
+        else:
+            self.day_bar.hide()
+            self.day_lbl.set_markup(f"<b>Today:</b> {human(today_used)} (no daily cap set)")
+
+        for child in self.days_grid.get_children():
+            self.days_grid.remove(child)
+        for row, i in enumerate(range(6, -1, -1)):
+            d = today - dt.timedelta(days=i)
+            rx, tx = days.get(d, [0, 0])
+            name = "Today" if i == 0 else f"{d:%a %d %b}"
+            self.days_grid.attach(Gtk.Label(label=name, xalign=0), 0, row, 1, 1)
+            self.days_grid.attach(Gtk.Label(label=human(rx + tx), xalign=1, hexpand=True), 1, row, 1, 1)
+            detail = Gtk.Label(label=f"↓ {human(rx)}  ↑ {human(tx)}", xalign=1)
+            detail.get_style_context().add_class("dim-label")
+            self.days_grid.attach(detail, 2, row, 1, 1)
+        self.days_grid.show_all()
+
+        tracked = ", ".join(physical_ifaces()) or "none found"
+        note = f"Tracking: {tracked}. vnStat saves every ~5 min. Updated {dt.datetime.now():%H:%M}."
+        if first > start:
+            note += f"\nRecords start {first:%d %b}; usage before that isn't counted."
+        self.foot_lbl.set_text(err or note)
+
+    def _maybe_notify(self, key, frac, used, plan, kind):
+        done = self.cfg["notified"].get(key, 0)
+        for threshold in (self.cfg["warn_percent"], 100):
+            if frac * 100 >= threshold > done:
+                msg = (f"You've used {human(used)} of your {kind.lower()} {human(plan)}." if threshold < 100
+                       else f"{kind} limit reached: {human(used)} used of {human(plan)}.")
+                subprocess.Popen(["notify-send", "-i", "network-transmit-receive",
+                                  "-u", "critical" if threshold >= 100 else "normal",
+                                  f"{kind} data usage {threshold}%", msg])
+                done = threshold
+        if done != self.cfg["notified"].get(key, 0):
+            today = dt.date.today().isoformat()  # keep only today's daily key + monthly keys
+            self.cfg["notified"] = {k: v for k, v in self.cfg["notified"].items()
+                                    if not k.startswith("day:") or k == "day:" + today}
+            self.cfg["notified"][key] = done
+            save_config(self.cfg)
+
+    def open_settings(self, *_):
+        dlg = Gtk.Dialog(title="Plan settings", transient_for=self, modal=True)
+        dlg.add_buttons("Cancel", Gtk.ResponseType.CANCEL, "Save", Gtk.ResponseType.OK)
+        grid = Gtk.Grid(column_spacing=12, row_spacing=10, margin=16)
+        dlg.get_content_area().add(grid)
+
+        plan = Gtk.SpinButton.new_with_range(0, 100000, 1)
+        plan.set_digits(1)
+        plan.set_value(float(self.cfg["plan_gb"]))
+        dcap = Gtk.SpinButton.new_with_range(0, 10000, 0.5)
+        dcap.set_digits(1)
+        dcap.set_value(float(self.cfg.get("daily_cap_gb", 0)))
+        day = Gtk.SpinButton.new_with_range(1, 31, 1)
+        day.set_value(int(self.cfg["cycle_start_day"]))
+        warn = Gtk.SpinButton.new_with_range(10, 99, 5)
+        warn.set_value(int(self.cfg["warn_percent"]))
+        rows = [("Monthly plan (GB, 0 = no limit)", plan),
+                ("Daily cap (GB, 0 = no limit)", dcap),
+                ("Plan resets on day of month", day),
+                ("Warn me at (%)", warn)]
+        for r, (text, widget) in enumerate(rows):
+            grid.attach(Gtk.Label(label=text, xalign=0), 0, r, 1, 1)
+            grid.attach(widget, 1, r, 1, 1)
+        dlg.show_all()
+        if dlg.run() == Gtk.ResponseType.OK:
+            self.cfg.update(plan_gb=plan.get_value(), daily_cap_gb=dcap.get_value(), cycle_start_day=day.get_value_as_int(),
+                            warn_percent=warn.get_value_as_int(), notified={})
+            save_config(self.cfg)
+            self.refresh()
+        dlg.destroy()
+
+
+if __name__ == "__main__":
+    win = App()
+    win.connect("destroy", Gtk.main_quit)
+    win.show_all()
+    win.refresh()  # re-hide bars for limits that aren't set
+    if not os.path.exists(CONFIG_FILE):
+        save_config(win.cfg)
+        GLib.idle_add(lambda: (win.open_settings(), False)[1])
+    Gtk.main()
