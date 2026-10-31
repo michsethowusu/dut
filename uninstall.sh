@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Removes Lidut. Leaves vnStat and its history in place (other tools may use it).
-# Pass --purge to also delete your Lidut settings.
+# Removes LiDUT. Leaves vnStat and its history in place (other tools may use it).
+# Pass --purge to also delete your LiDUT settings.
 set -uo pipefail
 
 pkill -f "$HOME/.local/bin/lidut" 2>/dev/null
@@ -17,4 +17,4 @@ if [ -f /etc/systemd/system/lidut-apps.service ]; then
   sudo systemctl daemon-reload
   [ "${1:-}" = "--purge" ] && sudo rm -rf /var/lib/lidut
 fi
-echo "Lidut removed."
+echo "LiDUT removed."

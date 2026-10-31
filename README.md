@@ -1,15 +1,15 @@
-# Lidut — Linux Data Usage Tracker
+# LiDUT — Linux Data Usage Tracker
 
 **Know where your data goes before your bundle runs out.**
 
-Lidut (**Li**nux **D**ata **U**sage **T**racker) is a small Linux desktop app for people on limited internet plans: mobile data
+LiDUT (**Li**nux **D**ata **U**sage **T**racker) is a small Linux desktop app for people on limited internet plans: mobile data
 bundles, capped home broadband, or tethering from your phone. It sits in your top bar,
 shows how much you've used today against your own cap, warns you before you run out, and
 (optionally) shows which apps used the data.
 
 <p align="center">
-  <img src="docs/screenshot.png" alt="Lidut main window" width="420"><br>
-  <img src="docs/topbar.png" alt="Lidut in the GNOME top bar" width="320">
+  <img src="docs/screenshot.png" alt="LiDUT main window" width="420"><br>
+  <img src="docs/topbar.png" alt="LiDUT in the GNOME top bar" width="320">
 </p>
 
 ## Features
@@ -46,7 +46,7 @@ cd lidut
 ./install.sh
 ```
 
-Lidut starts in your top bar right away, appears in your app menu, and starts
+LiDUT starts in your top bar right away, appears in your app menu, and starts
 automatically every time you log in.
 
 > vnStat only counts from the moment it's installed, so the first day will show only part of
@@ -65,14 +65,14 @@ This installs [NetHogs](https://github.com/raboof/nethogs) and a small backgroun
 working out which program owns network traffic needs admin rights. Open the **Apps** tab in
 the window to see the results.
 
-## Using Lidut
+## Using LiDUT
 
 | What you want | How |
 |---|---|
-| Open the window | Click the top-bar label → **Open Lidut** (or middle-click it), or launch Lidut from the app menu |
+| Open the window | Click the top-bar label → **Open LiDUT** (or middle-click it), or launch LiDUT from the app menu |
 | Set your daily cap or monthly plan | Click ⚙ in the window |
 | See which apps used data | **Apps** tab → choose *Today* or *This cycle* |
-| Hide the window | Close it; Lidut keeps running in the top bar |
+| Hide the window | Close it; LiDUT keeps running in the top bar |
 | Quit completely | Top-bar menu → **Quit** |
 
 ### Settings
@@ -90,12 +90,12 @@ Settings are saved in `~/.config/lidut/config.json`.
 
 ```
  network card ──► vnStat daemon ──► vnstat --json ──┐
-                                                    ├──► Lidut (GTK window + top-bar icon)
+                                                    ├──► LiDUT (GTK window + top-bar icon)
  network card ──► NetHogs ──► lidut-collector ────┘
                   (optional)   /var/lib/lidut/apps.json
 ```
 
-- **vnStat** records totals per interface. Lidut reads them every minute and adds up the
+- **vnStat** records totals per interface. LiDUT reads them every minute and adds up the
   real (physical) interfaces.
 - **lidut-collector** (optional) runs NetHogs in trace mode, turns its per-process
   counters into per-app daily totals, and keeps 62 days of history.

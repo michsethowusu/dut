@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Optional: per-app data tracking for Lidut. Installs NetHogs and a small
+# Optional: per-app data tracking for LiDUT. Installs NetHogs and a small
 # background service (runs as root, because seeing which program owns network
 # traffic needs admin rights). Run with: sudo ./install-app-tracking.sh
 set -euo pipefail
@@ -15,7 +15,7 @@ command -v nethogs >/dev/null || apt-get install -y nethogs
 install -Dm755 lidut-collector /usr/local/lib/lidut/lidut-collector
 cat > /etc/systemd/system/lidut-apps.service <<'EOF'
 [Unit]
-Description=Lidut per-app traffic collector (NetHogs)
+Description=LiDUT per-app traffic collector (NetHogs)
 After=network.target
 
 [Service]
@@ -31,5 +31,5 @@ EOF
 systemctl daemon-reload
 systemctl enable --now lidut-apps.service
 systemctl restart lidut-apps.service
-echo "Per-app tracking is running. Open Lidut and look at the Apps tab."
+echo "Per-app tracking is running. Open LiDUT and look at the Apps tab."
 echo "To remove: sudo systemctl disable --now lidut-apps && sudo rm /etc/systemd/system/lidut-apps.service"

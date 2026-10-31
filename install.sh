@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Installs Lidut for the current user and makes sure vnStat is running.
+# Installs LiDUT for the current user and makes sure vnStat is running.
 # Usage: ./install.sh        (asks for sudo only if system packages are missing)
 set -euo pipefail
 cd "$(dirname "$0")"
@@ -35,7 +35,7 @@ mkdir -p "$HOME/.local/share/applications" "$HOME/.config/autostart"
 cat > "$HOME/.local/share/applications/lidut.desktop" <<DESKTOP
 [Desktop Entry]
 Type=Application
-Name=Lidut
+Name=LiDUT
 GenericName=Linux Data Usage Tracker
 Comment=Track internet data used against a daily cap or monthly plan
 Exec=$HOME/.local/bin/lidut
@@ -51,5 +51,5 @@ update-desktop-database "$HOME/.local/share/applications" 2>/dev/null || true
 # 4. (Re)start it in the top bar
 pkill -f "$HOME/.local/bin/lidut" 2>/dev/null || true
 nohup "$HOME/.local/bin/lidut" --hidden >/dev/null 2>&1 &
-echo "Installed. Lidut is in your top bar and your app menu."
+echo "Installed. LiDUT is in your top bar and your app menu."
 echo "Optional per-app tracking: sudo ./install-app-tracking.sh"
