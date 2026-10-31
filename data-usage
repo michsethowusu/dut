@@ -6,11 +6,21 @@ import json
 import os
 import re
 import subprocess
+import sys
 
 import gi
 
 gi.require_version("Gtk", "3.0")
-from gi.repository import GLib, Gtk  # noqa: E402
+from gi.repository import Gio, GLib, Gtk  # noqa: E402
+
+AppIndicator = None
+for _name in ("AyatanaAppIndicator3", "AppIndicator3"):
+    try:
+        gi.require_version(_name, "0.1")
+        AppIndicator = getattr(__import__("gi.repository", fromlist=[_name]), _name)
+        break
+    except (ValueError, ImportError):
+        pass
 
 CONFIG_DIR = os.path.expanduser("~/.config/data-usage")
 CONFIG_FILE = os.path.join(CONFIG_DIR, "config.json")
@@ -101,14 +111,19 @@ def read_counters():
     return rx, tx
 
 
-class App(Gtk.Window):
-    def __init__(self):
-        super().__init__(title="Data Usage")
+class App(Gtk.ApplicationWindow):
+    def __init__(self, application):
+        super().__init__(application=application, title="Data Usage")
         self.set_default_size(420, 520)
         self.set_border_width(16)
         self.set_icon_name("network-transmit-receive")
         self.cfg = load_config()
         self.last_counters = read_counters()
+        self.indicator = None
+        if AppIndicator:
+            self._build_indicator()
+        # Closing the window hides it to the top bar instead of quitting (if a tray icon exists).
+        self.connect("delete-event", lambda *_: self.hide() or True if self.indicator else False)
 
         header = Gtk.HeaderBar(title="Data Usage", show_close_button=True)
         settings_btn = Gtk.Button.new_from_icon_name("emblem-system-symbolic", Gtk.IconSize.BUTTON)
@@ -169,6 +184,53 @@ class App(Gtk.Window):
         self.refresh()
         GLib.timeout_add_seconds(60, self._tick_refresh)
         GLib.timeout_add_seconds(2, self._tick_speed)
+
+    def _build_indicator(self):
+        ind = AppIndicator.Indicator.new("data-usage", "network-transmit-receive",
+                                         AppIndicator.IndicatorCategory.APPLICATION_STATUS)
+        ind.set_status(AppIndicator.IndicatorStatus.ACTIVE)
+        ind.set_title("Data Usage")
+        menu = Gtk.Menu()
+        show = Gtk.MenuItem(label="Open Data Usage")
+        show.connect("activate", lambda *_: self.present_window())
+        menu.append(show)
+        menu.append(Gtk.SeparatorMenuItem())
+        self.menu_today = Gtk.MenuItem(label="Today: —", sensitive=False)
+        self.menu_cycle = Gtk.MenuItem(label="This cycle: —", sensitive=False)
+        menu.append(self.menu_today)
+        menu.append(self.menu_cycle)
+        menu.append(Gtk.SeparatorMenuItem())
+        quit_item = Gtk.MenuItem(label="Quit")
+        quit_item.connect("activate", lambda *_: self.get_application().quit())
+        menu.append(quit_item)
+        menu.show_all()
+        ind.set_menu(menu)
+        ind.set_secondary_activate_target(show)  # middle-click opens the window directly
+        self.indicator = ind
+
+    def present_window(self):
+        self.show_all()
+        self.refresh()  # re-hide bars for limits that aren't set
+        self.present()
+
+    def _update_indicator(self, today_used, cap, used, plan):
+        if not self.indicator:
+            return
+        warn = self.cfg["warn_percent"] / 100
+        if cap > 0:
+            label = f"{human(today_used)} / {human(cap)}"
+            frac = today_used / cap
+        else:
+            label = human(today_used)
+            frac = 0
+        if plan > 0:
+            frac = max(frac, used / plan)
+        icon = ("network-error" if frac >= 1 else "dialog-warning" if frac >= warn
+                else "network-transmit-receive")
+        self.indicator.set_icon_full(icon, "Data Usage")
+        self.indicator.set_label(label.replace(".00 ", " "), "000.00 MB / 00 GB")
+        self.menu_today.set_label(f"Today: {human(today_used)}" + (f" of {human(cap)}" if cap > 0 else ""))
+        self.menu_cycle.set_label(f"This cycle: {human(used)}" + (f" of {human(plan)}" if plan > 0 else ""))
 
     def _label(self, box, text, markup=False, css=None):
         lbl = Gtk.Label(xalign=0)
@@ -254,6 +316,8 @@ class App(Gtk.Window):
             self.day_bar.hide()
             self.day_lbl.set_markup(f"<b>Today:</b> {human(today_used)} (no daily cap set)")
 
+        self._update_indicator(today_used, cap, used, plan)
+
         for child in self.days_grid.get_children():
             self.days_grid.remove(child)
         for row, i in enumerate(range(6, -1, -1)):
@@ -322,12 +386,32 @@ class App(Gtk.Window):
         dlg.destroy()
 
 
+class DataUsageApp(Gtk.Application):
+    """Single instance: launching again (e.g. from the app menu) just shows the window."""
+
+    def __init__(self, start_hidden):
+        super().__init__(application_id="org.michsethowusu.DataUsage",
+                         flags=Gio.ApplicationFlags.FLAGS_NONE)
+        self.start_hidden = start_hidden
+        self.win = None
+
+    def do_activate(self):
+        if self.win is None:
+            first_run = not os.path.exists(CONFIG_FILE)
+            self.win = App(self)
+            if self.win.indicator:
+                self.hold()  # keep running while hidden in the top bar
+            if first_run:
+                save_config(self.win.cfg)
+            if self.start_hidden and self.win.indicator and not first_run:
+                return
+            self.win.present_window()
+            if first_run:
+                GLib.idle_add(lambda: (self.win.open_settings(), False)[1])
+        else:
+            self.win.present_window()
+
+
 if __name__ == "__main__":
-    win = App()
-    win.connect("destroy", Gtk.main_quit)
-    win.show_all()
-    win.refresh()  # re-hide bars for limits that aren't set
-    if not os.path.exists(CONFIG_FILE):
-        save_config(win.cfg)
-        GLib.idle_add(lambda: (win.open_settings(), False)[1])
-    Gtk.main()
+    hidden = "--hidden" in sys.argv[1:]
+    sys.exit(DataUsageApp(hidden).run([sys.argv[0]]))
