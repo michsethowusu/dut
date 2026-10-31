@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- DUT is now installed only via the `.deb`; removed `install.sh`, `install-app-tracking.sh` and `uninstall.sh`
+- Apps tab: clearer hint when per-app tracking is turned off
+
 ## v1.0.0 — 2026-10-31
 
 First release.

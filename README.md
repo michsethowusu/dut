@@ -30,13 +30,9 @@ shows how much you've used today against your own cap, warns you before you run 
 
 ## Requirements
 
-- Linux with GNOME (tested on **Ubuntu 22.04**); other desktops work as a normal window
-- Python 3.8+ with PyGObject (GTK 3)
-- `vnstat`, `libnotify-bin`, and AppIndicator support for the top-bar icon
-- `nethogs`, only if you want per-app usage
-
-`install.sh` installs any missing packages with `apt`. See [requirements.txt](requirements.txt)
-for details.
+- Ubuntu 22.04 or newer, or another Debian-based distro (tested on Ubuntu 22.04 with GNOME)
+- Everything else (vnStat, NetHogs, Python GTK bindings, top-bar icon support) is installed
+  automatically by `apt`. See [`packaging/debian/control`](packaging/debian/control).
 
 ## Install
 
@@ -60,23 +56,13 @@ services: vnStat for total usage and `dut-apps` for per-app usage.
 
 To turn per-app tracking off: `sudo systemctl disable --now dut-apps`
 
-### From source (other distros, or for development)
+### Build the .deb yourself
 
 ```bash
 git clone https://github.com/michsethowusu/dut.git
 cd dut
-./install.sh                      # installs for your user only
-sudo ./install-app-tracking.sh    # optional: per-app usage
-```
-
-`install.sh` uses `apt` for missing system packages; on other distros, install the packages in
-[requirements.txt](requirements.txt) yourself first. Don't mix the two methods: run
-`./uninstall.sh` before switching to the `.deb`.
-
-### Build the .deb yourself
-
-```bash
-packaging/build-deb.sh          # → dist/dut_<version>_all.deb
+packaging/build-deb.sh                       # → dist/dut_<version>_all.deb
+sudo apt install ./dist/dut_*_all.deb
 ```
 
 Publishing a GitHub release also builds the `.deb` and attaches it automatically
@@ -138,23 +124,26 @@ Settings are saved in `~/.config/dut/config.json`.
 ## Uninstall
 
 ```bash
-sudo apt remove dut       # .deb install (add --purge to also delete per-app history)
-./uninstall.sh            # source install (add --purge to also delete settings)
+sudo apt remove dut           # keeps per-app history in /var/lib/dut
+sudo apt purge dut            # also deletes per-app history
 ```
 
-Your settings stay in `~/.config/dut` unless you delete them. vnStat is left installed.
+Your settings stay in `~/.config/dut` (delete that folder to remove them). vnStat and NetHogs
+stay installed; remove them with `sudo apt autoremove` if nothing else uses them.
 
 ## Project layout
 
-| File | Purpose |
-|---|---|
-| `dut` | The app (GTK window, top-bar icon, notifications) |
-| `dut-collector` | Optional per-app collector (runs as a root systemd service) |
-| `install.sh` / `uninstall.sh` | Install or remove for the current user |
-| `install-app-tracking.sh` | Install the optional per-app service |
-| `requirements.txt` | Python and system dependencies |
-| `packaging/` | `.deb` build script, package metadata, systemd service, desktop entry |
-| `CHANGELOG.md` | Release notes |
+| Path | Purpose | Installed to |
+|---|---|---|
+| `dut` | The app (GTK window, top-bar icon, notifications) | `/usr/bin/dut` |
+| `dut-collector` | Per-app collector run by the `dut-apps` service | `/usr/lib/dut/dut-collector` |
+| `packaging/dut-apps.service` | systemd unit for the collector (runs as root) | `/lib/systemd/system/` |
+| `packaging/dut.desktop` | App menu entry (also used for autostart with `--hidden`) | `/usr/share/applications/`, `/etc/xdg/autostart/` |
+| `packaging/debian/` | Package metadata, dependencies and install/remove scripts | — |
+| `packaging/build-deb.sh` | Builds `dist/dut_<version>_all.deb` | — |
+| `.github/workflows/release.yml` | Builds the `.deb` and attaches it to each GitHub release | — |
+| `requirements.txt` | Dependency reference | — |
+| `CHANGELOG.md` | Release notes | — |
 
 ## License
 

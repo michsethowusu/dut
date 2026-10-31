@@ -1,9 +1,9 @@
-# DUT uses only the Python standard library plus PyGObject (GTK bindings).
+# DUT is shipped as a .deb; apt installs these automatically (see packaging/debian/control).
+# Python: standard library + PyGObject only.
 #
-# On Ubuntu/Debian, install the system packages instead of pip — install.sh does this:
-#   sudo apt install vnstat python3-gi gir1.2-gtk-3.0 gir1.2-ayatanaappindicator3-0.1 libnotify-bin
-#   sudo apt install nethogs        # optional, for per-app tracking
+# Runtime packages (Ubuntu/Debian):
+#   python3 (>= 3.8)  python3-gi  gir1.2-gtk-3.0  gir1.2-ayatanaappindicator3-0.1
+#   vnstat  nethogs  libnotify-bin
 #
-# pip install -r requirements.txt works too, but needs the GTK/GObject-introspection
-# development headers (libgirepository1.0-dev, libcairo2-dev) to build PyGObject.
+# Build: dpkg-deb (part of dpkg, always present on Debian/Ubuntu).
 PyGObject>=3.42
