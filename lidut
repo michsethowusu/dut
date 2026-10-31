@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Bytecap — a small GTK window over vnStat for tracking a limited internet plan."""
+"""Lidut (Linux Data Usage Tracker): a GTK app over vnStat for tracking a limited internet plan."""
 import calendar
 import datetime as dt
 import json
@@ -22,7 +22,7 @@ for _name in ("AyatanaAppIndicator3", "AppIndicator3"):
     except (ValueError, ImportError):
         pass
 
-CONFIG_DIR = os.path.expanduser("~/.config/bytecap")
+CONFIG_DIR = os.path.expanduser("~/.config/lidut")
 CONFIG_FILE = os.path.join(CONFIG_DIR, "config.json")
 DEFAULTS = {
     "plan_gb": 0.0,        # monthly plan, 0 = no limit
@@ -31,7 +31,7 @@ DEFAULTS = {
     "warn_percent": 80,
     "notified": {},        # cycle-start -> highest threshold already notified
 }
-APPS_FILE = "/var/lib/bytecap/apps.json"  # written by bytecap-collector
+APPS_FILE = "/var/lib/lidut/apps.json"  # written by lidut-collector
 # Real network devices only: Wi-Fi, Ethernet, mobile modem, phone USB tethering.
 PHYSICAL = re.compile(r"^(wl|en|eth|ww|usb)")
 
@@ -133,7 +133,7 @@ def read_counters():
 
 class App(Gtk.ApplicationWindow):
     def __init__(self, application):
-        super().__init__(application=application, title="Bytecap")
+        super().__init__(application=application, title="Lidut")
         self.set_default_size(420, 520)
         self.set_border_width(16)
         self.set_icon_name("network-transmit-receive")
@@ -145,7 +145,7 @@ class App(Gtk.ApplicationWindow):
         # Closing the window hides it to the top bar instead of quitting (if a tray icon exists).
         self.connect("delete-event", lambda *_: self.hide() or True if self.indicator else False)
 
-        header = Gtk.HeaderBar(title="Bytecap", show_close_button=True)
+        header = Gtk.HeaderBar(title="Lidut", show_close_button=True)
         settings_btn = Gtk.Button.new_from_icon_name("emblem-system-symbolic", Gtk.IconSize.BUTTON)
         settings_btn.set_tooltip_text("Plan settings")
         settings_btn.connect("clicked", self.open_settings)
@@ -221,12 +221,12 @@ class App(Gtk.ApplicationWindow):
         GLib.timeout_add_seconds(2, self._tick_speed)
 
     def _build_indicator(self):
-        ind = AppIndicator.Indicator.new("bytecap", "network-transmit-receive",
+        ind = AppIndicator.Indicator.new("lidut", "network-transmit-receive",
                                          AppIndicator.IndicatorCategory.APPLICATION_STATUS)
         ind.set_status(AppIndicator.IndicatorStatus.ACTIVE)
-        ind.set_title("Bytecap")
+        ind.set_title("Lidut")
         menu = Gtk.Menu()
-        show = Gtk.MenuItem(label="Open Bytecap")
+        show = Gtk.MenuItem(label="Open Lidut")
         show.connect("activate", lambda *_: self.present_window())
         menu.append(show)
         menu.append(Gtk.SeparatorMenuItem())
@@ -262,7 +262,7 @@ class App(Gtk.ApplicationWindow):
             frac = max(frac, used / plan)
         icon = ("network-error" if frac >= 1 else "dialog-warning" if frac >= warn
                 else "network-transmit-receive")
-        self.indicator.set_icon_full(icon, "Bytecap")
+        self.indicator.set_icon_full(icon, "Lidut")
         self.indicator.set_label(label.replace(".00 ", " "), "000.00 MB / 00 GB")
         self.menu_today.set_label(f"Today: {human(today_used)}" + (f" of {human(cap)}" if cap > 0 else ""))
         self.menu_cycle.set_label(f"This cycle: {human(used)}" + (f" of {human(plan)}" if plan > 0 else ""))
@@ -452,11 +452,11 @@ class App(Gtk.ApplicationWindow):
         dlg.destroy()
 
 
-class BytecapApp(Gtk.Application):
+class LidutApp(Gtk.Application):
     """Single instance: launching again (e.g. from the app menu) just shows the window."""
 
     def __init__(self, start_hidden):
-        super().__init__(application_id="org.michsethowusu.Bytecap",
+        super().__init__(application_id="org.michsethowusu.Lidut",
                          flags=Gio.ApplicationFlags.FLAGS_NONE)
         self.start_hidden = start_hidden
         self.win = None
@@ -480,4 +480,4 @@ class BytecapApp(Gtk.Application):
 
 if __name__ == "__main__":
     hidden = "--hidden" in sys.argv[1:]
-    sys.exit(BytecapApp(hidden).run([sys.argv[0]]))
+    sys.exit(LidutApp(hidden).run([sys.argv[0]]))

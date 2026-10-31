@@ -1,15 +1,15 @@
-# Bytecap
+# Lidut — Linux Data Usage Tracker
 
 **Know where your data goes before your bundle runs out.**
 
-Bytecap is a small Linux desktop app for people on limited internet plans: mobile data
+Lidut (**Li**nux **D**ata **U**sage **T**racker) is a small Linux desktop app for people on limited internet plans: mobile data
 bundles, capped home broadband, or tethering from your phone. It sits in your top bar,
 shows how much you've used today against your own cap, warns you before you run out, and
 (optionally) shows which apps used the data.
 
 <p align="center">
-  <img src="docs/screenshot.png" alt="Bytecap main window" width="420"><br>
-  <img src="docs/topbar.png" alt="Bytecap in the GNOME top bar" width="320">
+  <img src="docs/screenshot.png" alt="Lidut main window" width="420"><br>
+  <img src="docs/topbar.png" alt="Lidut in the GNOME top bar" width="320">
 </p>
 
 ## Features
@@ -41,12 +41,12 @@ for details.
 ## Install
 
 ```bash
-git clone https://github.com/michsethowusu/bytecap.git
-cd bytecap
+git clone https://github.com/michsethowusu/lidut.git
+cd lidut
 ./install.sh
 ```
 
-Bytecap starts in your top bar right away, appears in your app menu, and starts
+Lidut starts in your top bar right away, appears in your app menu, and starts
 automatically every time you log in.
 
 > vnStat only counts from the moment it's installed, so the first day will show only part of
@@ -61,18 +61,18 @@ sudo ./install-app-tracking.sh
 ```
 
 This installs [NetHogs](https://github.com/raboof/nethogs) and a small background service,
-`bytecap-apps`, that records each app's downloads and uploads per day. It runs as root because
+`lidut-apps`, that records each app's downloads and uploads per day. It runs as root because
 working out which program owns network traffic needs admin rights. Open the **Apps** tab in
 the window to see the results.
 
-## Using Bytecap
+## Using Lidut
 
 | What you want | How |
 |---|---|
-| Open the window | Click the top-bar label → **Open Bytecap** (or middle-click it), or launch Bytecap from the app menu |
+| Open the window | Click the top-bar label → **Open Lidut** (or middle-click it), or launch Lidut from the app menu |
 | Set your daily cap or monthly plan | Click ⚙ in the window |
 | See which apps used data | **Apps** tab → choose *Today* or *This cycle* |
-| Hide the window | Close it; Bytecap keeps running in the top bar |
+| Hide the window | Close it; Lidut keeps running in the top bar |
 | Quit completely | Top-bar menu → **Quit** |
 
 ### Settings
@@ -84,20 +84,20 @@ the window to see the results.
 | Plan resets on day | Day of the month your plan renews (clamped for short months) |
 | Warn me at (%) | When to show the first warning |
 
-Settings are saved in `~/.config/bytecap/config.json`.
+Settings are saved in `~/.config/lidut/config.json`.
 
 ## How it works
 
 ```
  network card ──► vnStat daemon ──► vnstat --json ──┐
-                                                    ├──► Bytecap (GTK window + top-bar icon)
- network card ──► NetHogs ──► bytecap-collector ────┘
-                  (optional)   /var/lib/bytecap/apps.json
+                                                    ├──► Lidut (GTK window + top-bar icon)
+ network card ──► NetHogs ──► lidut-collector ────┘
+                  (optional)   /var/lib/lidut/apps.json
 ```
 
-- **vnStat** records totals per interface. Bytecap reads them every minute and adds up the
+- **vnStat** records totals per interface. Lidut reads them every minute and adds up the
   real (physical) interfaces.
-- **bytecap-collector** (optional) runs NetHogs in trace mode, turns its per-process
+- **lidut-collector** (optional) runs NetHogs in trace mode, turns its per-process
   counters into per-app daily totals, and keeps 62 days of history.
 
 ### Accuracy notes
@@ -131,8 +131,8 @@ vnStat itself is left installed.
 
 | File | Purpose |
 |---|---|
-| `bytecap` | The app (GTK window, top-bar icon, notifications) |
-| `bytecap-collector` | Optional per-app collector (runs as a root systemd service) |
+| `lidut` | The app (GTK window, top-bar icon, notifications) |
+| `lidut-collector` | Optional per-app collector (runs as a root systemd service) |
 | `install.sh` / `uninstall.sh` | Install or remove for the current user |
 | `install-app-tracking.sh` | Install the optional per-app service |
 | `requirements.txt` | Python and system dependencies |
