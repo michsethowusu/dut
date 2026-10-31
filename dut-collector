@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""LiDUT per-app collector. Runs as root (systemd service).
+"""DUT per-app collector. Runs as root (systemd service).
 
 Runs NetHogs in trace mode on the real network interfaces, turns its running
 per-process byte totals into per-app daily totals, and saves them to
-/var/lib/lidut/apps.json as {"YYYY-MM-DD": {"app": [rx_bytes, tx_bytes]}}.
+/var/lib/dut/apps.json as {"YYYY-MM-DD": {"app": [rx_bytes, tx_bytes]}}.
 """
 import datetime as dt
 import json
@@ -15,7 +15,7 @@ import subprocess
 import sys
 import time
 
-STATE_DIR = "/var/lib/lidut"
+STATE_DIR = "/var/lib/dut"
 STATE_FILE = os.path.join(STATE_DIR, "apps.json")
 KEEP_DAYS = 62
 SAVE_EVERY = 30      # seconds

@@ -1,4 +1,4 @@
-# LiDUT uses only the Python standard library plus PyGObject (GTK bindings).
+# DUT uses only the Python standard library plus PyGObject (GTK bindings).
 #
 # On Ubuntu/Debian, install the system packages instead of pip — install.sh does this:
 #   sudo apt install vnstat python3-gi gir1.2-gtk-3.0 gir1.2-ayatanaappindicator3-0.1 libnotify-bin

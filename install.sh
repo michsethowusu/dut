@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Installs LiDUT for the current user and makes sure vnStat is running.
+# Installs DUT for the current user and makes sure vnStat is running.
 # Usage: ./install.sh        (asks for sudo only if system packages are missing)
 set -euo pipefail
 cd "$(dirname "$0")"
@@ -18,10 +18,10 @@ if [ ${#missing[@]} -gt 0 ]; then
 fi
 systemctl is-active --quiet vnstat || sudo systemctl enable --now vnstat
 
-# 2. Move over settings from earlier names (data-usage, bytecap) and remove old copies
-for old in data-usage bytecap; do
-  if [ -d "$HOME/.config/$old" ] && [ ! -d "$HOME/.config/lidut" ]; then
-    mv "$HOME/.config/$old" "$HOME/.config/lidut"
+# 2. Move over settings from earlier names (data-usage, bytecap, lidut) and remove old copies
+for old in data-usage bytecap lidut; do
+  if [ -d "$HOME/.config/$old" ] && [ ! -d "$HOME/.config/dut" ]; then
+    mv "$HOME/.config/$old" "$HOME/.config/dut"
   fi
   pkill -f "$HOME/.local/bin/$old" 2>/dev/null || true
   rm -f "$HOME/.local/bin/$old" \
@@ -30,26 +30,26 @@ for old in data-usage bytecap; do
 done
 
 # 3. The app, its menu entry, and autostart (hidden in the top bar at login)
-install -Dm755 lidut "$HOME/.local/bin/lidut"
+install -Dm755 dut "$HOME/.local/bin/dut"
 mkdir -p "$HOME/.local/share/applications" "$HOME/.config/autostart"
-cat > "$HOME/.local/share/applications/lidut.desktop" <<DESKTOP
+cat > "$HOME/.local/share/applications/dut.desktop" <<DESKTOP
 [Desktop Entry]
 Type=Application
-Name=LiDUT
-GenericName=Linux Data Usage Tracker
+Name=DUT
+GenericName=Data Usage Tracker
 Comment=Track internet data used against a daily cap or monthly plan
-Exec=$HOME/.local/bin/lidut
+Exec=$HOME/.local/bin/dut
 Icon=network-transmit-receive
 Terminal=false
 Categories=Network;Monitor;Utility;
 Keywords=internet;data;bandwidth;usage;cap;vnstat;
 DESKTOP
-sed -e "s|^Exec=.*|Exec=$HOME/.local/bin/lidut --hidden|" \
-  "$HOME/.local/share/applications/lidut.desktop" > "$HOME/.config/autostart/lidut.desktop"
+sed -e "s|^Exec=.*|Exec=$HOME/.local/bin/dut --hidden|" \
+  "$HOME/.local/share/applications/dut.desktop" > "$HOME/.config/autostart/dut.desktop"
 update-desktop-database "$HOME/.local/share/applications" 2>/dev/null || true
 
 # 4. (Re)start it in the top bar
-pkill -f "$HOME/.local/bin/lidut" 2>/dev/null || true
-nohup "$HOME/.local/bin/lidut" --hidden >/dev/null 2>&1 &
-echo "Installed. LiDUT is in your top bar and your app menu."
+pkill -f "$HOME/.local/bin/dut" 2>/dev/null || true
+nohup "$HOME/.local/bin/dut" --hidden >/dev/null 2>&1 &
+echo "Installed. DUT is in your top bar and your app menu."
 echo "Optional per-app tracking: sudo ./install-app-tracking.sh"
