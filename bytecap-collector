@@ -1,0 +1,125 @@
+#!/usr/bin/env python3
+"""Bytecap per-app collector. Runs as root (systemd service).
+
+Runs NetHogs in trace mode on the real network interfaces, turns its running
+per-process byte totals into per-app daily totals, and saves them to
+/var/lib/bytecap/apps.json as {"YYYY-MM-DD": {"app": [rx_bytes, tx_bytes]}}.
+"""
+import datetime as dt
+import json
+import os
+import re
+import select
+import signal
+import subprocess
+import sys
+import time
+
+STATE_DIR = "/var/lib/bytecap"
+STATE_FILE = os.path.join(STATE_DIR, "apps.json")
+KEEP_DAYS = 62
+SAVE_EVERY = 30      # seconds
+IFACE_CHECK = 60     # seconds; restart NetHogs if the set of interfaces changes
+PHYSICAL = re.compile(r"^(wl|en|eth|ww|usb)")
+
+
+def physical_ifaces():
+    return sorted(i for i in os.listdir("/sys/class/net") if PHYSICAL.match(i))
+
+
+def load():
+    try:
+        with open(STATE_FILE) as f:
+            return json.load(f)
+    except (OSError, ValueError):
+        return {}
+
+
+def save(data):
+    cutoff = (dt.date.today() - dt.timedelta(days=KEEP_DAYS)).isoformat()
+    for day in [d for d in data if d < cutoff]:
+        del data[day]
+    os.makedirs(STATE_DIR, exist_ok=True)
+    tmp = STATE_FILE + ".tmp"
+    with open(tmp, "w") as f:
+        json.dump(data, f)
+    os.chmod(tmp, 0o644)
+    os.replace(tmp, STATE_FILE)
+
+
+def app_name(program):
+    """Friendly app name from a NetHogs program path."""
+    if program.startswith("unknown"):
+        return "Other (system / unidentified)"
+    m = re.match(r"/snap/([^/]+)/", program)
+    name = m.group(1) if m else (os.path.basename(program.split(" ")[0]) or program)
+    return {"chrome": "Google Chrome", "firefox": "Firefox", "code": "VS Code",
+            "snapd": "Snap updates", "packagekitd": "Software updates",
+            "apt": "Software updates", "http": "Software updates",
+            "https": "Software updates"}.get(name, name)
+
+
+def run_nethogs(ifaces, data):
+    """Run NetHogs until the interface set changes. Returns when it should be restarted."""
+    cmd = ["nethogs", "-t", "-C", "-v", "2", "-d", "5", *ifaces]
+    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+                            text=True, bufsize=1)
+    last = {}  # "prog/pid/uid" -> (sent, recv) cumulative as reported by NetHogs
+    last_save = last_check = time.monotonic()
+    dirty = False
+    try:
+        while True:
+            ready, _, _ = select.select([proc.stdout], [], [], 5)
+            if ready:
+                line = proc.stdout.readline()
+                if not line:
+                    return  # NetHogs exited; caller restarts it
+                parts = line.rstrip("\n").rsplit("\t", 2)
+                if len(parts) == 3:
+                    key, sent, recv = parts
+                    try:
+                        sent, recv = float(sent), float(recv)
+                    except ValueError:
+                        continue
+                    psent, precv = last.get(key, (0.0, 0.0))
+                    # NetHogs' totals only grow; if one drops, the process was replaced.
+                    dsent = sent - psent if sent >= psent else sent
+                    drecv = recv - precv if recv >= precv else recv
+                    last[key] = (sent, recv)
+                    if dsent > 0 or drecv > 0:
+                        program = key.rsplit("/", 2)[0]
+                        day = data.setdefault(dt.date.today().isoformat(), {})
+                        acc = day.setdefault(app_name(program), [0, 0])
+                        acc[0] += int(drecv)
+                        acc[1] += int(dsent)
+                        dirty = True
+            now = time.monotonic()
+            if dirty and now - last_save >= SAVE_EVERY:
+                save(data)
+                dirty, last_save = False, now
+            if now - last_check >= IFACE_CHECK:
+                last_check = now
+                if physical_ifaces() != ifaces:
+                    return
+    finally:
+        if dirty:
+            save(data)
+        proc.terminate()
+        try:
+            proc.wait(5)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+
+
+def main():
+    data = load()
+    signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))
+    while True:
+        ifaces = physical_ifaces()
+        if ifaces:
+            run_nethogs(ifaces, data)
+        time.sleep(5)
+
+
+if __name__ == "__main__":
+    main()

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Data Usage — a small GTK window over vnStat for tracking a limited internet plan."""
+"""Bytecap — a small GTK window over vnStat for tracking a limited internet plan."""
 import calendar
 import datetime as dt
 import json
@@ -22,7 +22,7 @@ for _name in ("AyatanaAppIndicator3", "AppIndicator3"):
     except (ValueError, ImportError):
         pass
 
-CONFIG_DIR = os.path.expanduser("~/.config/data-usage")
+CONFIG_DIR = os.path.expanduser("~/.config/bytecap")
 CONFIG_FILE = os.path.join(CONFIG_DIR, "config.json")
 DEFAULTS = {
     "plan_gb": 0.0,        # monthly plan, 0 = no limit
@@ -31,6 +31,7 @@ DEFAULTS = {
     "warn_percent": 80,
     "notified": {},        # cycle-start -> highest threshold already notified
 }
+APPS_FILE = "/var/lib/bytecap/apps.json"  # written by bytecap-collector
 # Real network devices only: Wi-Fi, Ethernet, mobile modem, phone USB tethering.
 PHYSICAL = re.compile(r"^(wl|en|eth|ww|usb)")
 
@@ -98,6 +99,25 @@ def read_vnstat_days():
     return days, ""
 
 
+def read_app_usage(first_day, last_day):
+    """Return ({app: [rx, tx]} summed over the date range, installed?)."""
+    try:
+        with open(APPS_FILE) as f:
+            data = json.load(f)
+    except FileNotFoundError:
+        return {}, False
+    except (OSError, ValueError):
+        return {}, True
+    totals = {}
+    for day, apps in data.items():
+        if first_day.isoformat() <= day <= last_day.isoformat():
+            for app, (rx, tx) in apps.items():
+                acc = totals.setdefault(app, [0, 0])
+                acc[0] += rx
+                acc[1] += tx
+    return totals, True
+
+
 def read_counters():
     rx = tx = 0
     for i in physical_ifaces():
@@ -113,7 +133,7 @@ def read_counters():
 
 class App(Gtk.ApplicationWindow):
     def __init__(self, application):
-        super().__init__(application=application, title="Data Usage")
+        super().__init__(application=application, title="Bytecap")
         self.set_default_size(420, 520)
         self.set_border_width(16)
         self.set_icon_name("network-transmit-receive")
@@ -125,7 +145,7 @@ class App(Gtk.ApplicationWindow):
         # Closing the window hides it to the top bar instead of quitting (if a tray icon exists).
         self.connect("delete-event", lambda *_: self.hide() or True if self.indicator else False)
 
-        header = Gtk.HeaderBar(title="Data Usage", show_close_button=True)
+        header = Gtk.HeaderBar(title="Bytecap", show_close_button=True)
         settings_btn = Gtk.Button.new_from_icon_name("emblem-system-symbolic", Gtk.IconSize.BUTTON)
         settings_btn.set_tooltip_text("Plan settings")
         settings_btn.connect("clicked", self.open_settings)
@@ -172,9 +192,24 @@ class App(Gtk.ApplicationWindow):
             self.stats[key] = v
 
         box.pack_start(Gtk.Separator(), False, False, 4)
-        self._label(box, "<b>Last 7 days</b>", markup=True)
+        stack = Gtk.Stack(transition_type=Gtk.StackTransitionType.CROSSFADE)
+        switcher = Gtk.StackSwitcher(stack=stack, halign=Gtk.Align.CENTER)
+        box.pack_start(switcher, False, False, 0)
+        box.pack_start(stack, False, False, 0)
+
         self.days_grid = Gtk.Grid(column_spacing=12, row_spacing=4)
-        box.pack_start(self.days_grid, False, False, 0)
+        stack.add_titled(self.days_grid, "days", "Last 7 days")
+
+        apps_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
+        self.apps_range = Gtk.ComboBoxText(halign=Gtk.Align.START)
+        self.apps_range.append("today", "Today")
+        self.apps_range.append("cycle", "This cycle")
+        self.apps_range.set_active_id("today")
+        self.apps_range.connect("changed", lambda *_: self.refresh())
+        apps_box.pack_start(self.apps_range, False, False, 0)
+        self.apps_grid = Gtk.Grid(column_spacing=12, row_spacing=4)
+        apps_box.pack_start(self.apps_grid, False, False, 0)
+        stack.add_titled(apps_box, "apps", "Apps")
 
         self.foot_lbl = Gtk.Label(xalign=0)
         self.foot_lbl.get_style_context().add_class("dim-label")
@@ -186,12 +221,12 @@ class App(Gtk.ApplicationWindow):
         GLib.timeout_add_seconds(2, self._tick_speed)
 
     def _build_indicator(self):
-        ind = AppIndicator.Indicator.new("data-usage", "network-transmit-receive",
+        ind = AppIndicator.Indicator.new("bytecap", "network-transmit-receive",
                                          AppIndicator.IndicatorCategory.APPLICATION_STATUS)
         ind.set_status(AppIndicator.IndicatorStatus.ACTIVE)
-        ind.set_title("Data Usage")
+        ind.set_title("Bytecap")
         menu = Gtk.Menu()
-        show = Gtk.MenuItem(label="Open Data Usage")
+        show = Gtk.MenuItem(label="Open Bytecap")
         show.connect("activate", lambda *_: self.present_window())
         menu.append(show)
         menu.append(Gtk.SeparatorMenuItem())
@@ -227,7 +262,7 @@ class App(Gtk.ApplicationWindow):
             frac = max(frac, used / plan)
         icon = ("network-error" if frac >= 1 else "dialog-warning" if frac >= warn
                 else "network-transmit-receive")
-        self.indicator.set_icon_full(icon, "Data Usage")
+        self.indicator.set_icon_full(icon, "Bytecap")
         self.indicator.set_label(label.replace(".00 ", " "), "000.00 MB / 00 GB")
         self.menu_today.set_label(f"Today: {human(today_used)}" + (f" of {human(cap)}" if cap > 0 else ""))
         self.menu_cycle.set_label(f"This cycle: {human(used)}" + (f" of {human(plan)}" if plan > 0 else ""))
@@ -330,12 +365,43 @@ class App(Gtk.ApplicationWindow):
             detail.get_style_context().add_class("dim-label")
             self.days_grid.attach(detail, 2, row, 1, 1)
         self.days_grid.show_all()
+        self._refresh_apps(today if self.apps_range.get_active_id() == "today" else start, today)
 
         tracked = ", ".join(physical_ifaces()) or "none found"
         note = f"Tracking: {tracked}. vnStat saves every ~5 min. Updated {dt.datetime.now():%H:%M}."
         if first > start:
             note += f"\nRecords start {first:%d %b}; usage before that isn't counted."
         self.foot_lbl.set_text(err or note)
+
+    def _refresh_apps(self, first_day, last_day):
+        for child in self.apps_grid.get_children():
+            self.apps_grid.remove(child)
+        totals, installed = read_app_usage(first_day, last_day)
+        if not installed or not totals:
+            msg = ("Per-app tracking isn't set up.\nRun  sudo ./install-app-tracking.sh  from the repo."
+                   if not installed else "No app traffic recorded yet for this period.")
+            lbl = Gtk.Label(label=msg, xalign=0, selectable=True)
+            lbl.get_style_context().add_class("dim-label")
+            self.apps_grid.attach(lbl, 0, 0, 3, 1)
+            self.apps_grid.show_all()
+            return
+        ranked = sorted(totals.items(), key=lambda kv: -(kv[1][0] + kv[1][1]))
+        top, rest = ranked[:10], ranked[10:]
+        if rest:
+            top.append((f"{len(rest)} other apps",
+                        [sum(v[0] for _, v in rest), sum(v[1] for _, v in rest)]))
+        biggest = max(1, top[0][1][0] + top[0][1][1])
+        for row, (app, (rx, tx)) in enumerate(top):
+            name = Gtk.Label(label=app, xalign=0, ellipsize=3, max_width_chars=22)
+            name.set_tooltip_text(f"{app}\n↓ {human(rx)}  ↑ {human(tx)}")
+            bar = Gtk.LevelBar(min_value=0, max_value=1, value=(rx + tx) / biggest,
+                               hexpand=True, valign=Gtk.Align.CENTER)
+            bar.set_size_request(80, 8)
+            amount = Gtk.Label(label=human(rx + tx), xalign=1)
+            self.apps_grid.attach(name, 0, row, 1, 1)
+            self.apps_grid.attach(bar, 1, row, 1, 1)
+            self.apps_grid.attach(amount, 2, row, 1, 1)
+        self.apps_grid.show_all()
 
     def _maybe_notify(self, key, frac, used, plan, kind):
         done = self.cfg["notified"].get(key, 0)
@@ -386,11 +452,11 @@ class App(Gtk.ApplicationWindow):
         dlg.destroy()
 
 
-class DataUsageApp(Gtk.Application):
+class BytecapApp(Gtk.Application):
     """Single instance: launching again (e.g. from the app menu) just shows the window."""
 
     def __init__(self, start_hidden):
-        super().__init__(application_id="org.michsethowusu.DataUsage",
+        super().__init__(application_id="org.michsethowusu.Bytecap",
                          flags=Gio.ApplicationFlags.FLAGS_NONE)
         self.start_hidden = start_hidden
         self.win = None
@@ -414,4 +480,4 @@ class DataUsageApp(Gtk.Application):
 
 if __name__ == "__main__":
     hidden = "--hidden" in sys.argv[1:]
-    sys.exit(DataUsageApp(hidden).run([sys.argv[0]]))
+    sys.exit(BytecapApp(hidden).run([sys.argv[0]]))
